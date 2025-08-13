@@ -12,6 +12,12 @@ function toFixedNice(n, frac = 1) {
   return Number.isFinite(n) ? n.toFixed(frac) : '–'
 }
 
+function toUSD(n) {
+  return Number.isFinite(n)
+    ? n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+    : '–'
+}
+
 const state = reactive({
   kwp: 50,
   specificYield: 900,
@@ -113,6 +119,20 @@ function simulate() {
 }
 
 const sim = computed(simulate)
+
+// Pricing assumptions
+const PANEL_W = 450 // W per panel
+const PANEL_PRICE = 50 // $ per 450 W panel
+const PANEL_WIRING_MARKUP = 0.05
+const BATTERY_PRICE_PER_KWH = 50 // $ per kWh of cells
+const BATTERY_ENCLOSURE_BMS_MARKUP = 0.05
+
+const panelCount = computed(() => Math.ceil((state.kwp * 1000) / PANEL_W))
+const panelCostBase = computed(() => panelCount.value * PANEL_PRICE)
+const panelCostWithWiring = computed(() => panelCostBase.value * (1 + PANEL_WIRING_MARKUP))
+const batteryCostBase = computed(() => state.batteryKwh * BATTERY_PRICE_PER_KWH)
+const batteryCostWithBms = computed(() => batteryCostBase.value * (1 + BATTERY_ENCLOSURE_BMS_MARKUP))
+const totalSystemCost = computed(() => panelCostWithWiring.value + batteryCostWithBms.value)
 
 // Force-remount charts on parameter changes to avoid heavy internal updates
 const chartKey = ref(0)
@@ -247,7 +267,7 @@ const barOption = computed(() => ({
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
               <UiKpi label="Autarkie" :value="`${toFixedNice(sim.autonomy, 1)} %`" />
               <UiKpi label="Jahres-PV" :value="`${toFixedNice(yearPV, 0)} kWh`" />
-              <UiKpi label="Batterie nutzbar" :value="`${toFixedNice(usableCap.value, 0)} kWh`" />
+              <UiKpi label="Batterie nutzbar" :value="`${toFixedNice(usableCap, 0)} kWh`" />
               <UiKpi label="Nicht gedeckt" :value="`${toFixedNice(sim.unmetLoad, 0)} kWh`" />
             </div>
           </div>
@@ -266,6 +286,19 @@ const barOption = computed(() => ({
             <UiEchart :key="chartKey + '-bar'" :option="barOption" :height="300" />
           </ClientOnly>
           <p class="text-xs text-slate-500">Hinweis: Aus Performancegründen zeigt die Balkengrafik nur die ersten 120 Tage. Passe Parameter an und beobachte die SOC-Kurve fürs Gesamtjahr.</p>
+        </div>
+
+        <div class="card">
+          <div class="p-4">
+            <h2 class="text-lg font-medium">Kostenabschätzung</h2>
+            <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <UiKpi label="Anzahl Module" :value="`${panelCount} × 450 W`" />
+              <UiKpi label="Module + Verkabelung" :value="toUSD(panelCostWithWiring)" />
+              <UiKpi label="Batterie + Gehäuse/BMS" :value="toUSD(batteryCostWithBms)" />
+              <UiKpi label="Gesamt" :value="toUSD(totalSystemCost)" />
+            </div>
+            <p class="mt-2 text-xs text-slate-500">Annahmen: 50 $ pro 450 W Modul + 5 % für Verkabelung; 50 $/kWh Zellen + 5 % für Gehäuse und BMS. Modulanzahl auf ganze Module aufgerundet.</p>
+          </div>
         </div>
 
         <div class="card p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
